@@ -1,4 +1,4 @@
 Work in progress
 
-#Todo:
+# Todo:
 - Alarm handler for low battery
