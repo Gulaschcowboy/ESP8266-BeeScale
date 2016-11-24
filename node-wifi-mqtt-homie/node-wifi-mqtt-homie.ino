@@ -41,7 +41,7 @@
 #include <RunningMedian.h>
 
 // Use sketch BeeScale-Calibration to get these values
-const float offset = 85107.00;  // Offset load cell
+const float offset = 244632.00;  // Offset load cell
 const float cell_divider = 22.27; // Load cell divider
 
 HX711 scale;

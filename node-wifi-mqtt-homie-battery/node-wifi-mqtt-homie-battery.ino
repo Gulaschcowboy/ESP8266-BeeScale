@@ -41,7 +41,7 @@
 #include <RunningMedian.h>
 
 const int DEFAULT_SLEEP_TIME = 60;
-HomieSetting<unsigned long>sleepTimeS("sleepTime", "SleepTime in seconds (max. 3600s!), default is 60s");
+HomieSetting<long>sleepTimeS("sleepTime", "SleepTime in seconds (max. 3600s!), default is 60s");
 
 ADC_MODE(ADC_VCC);
 
@@ -84,10 +84,9 @@ int i;
 
 // Use sketch Bienen-NSA-v2.0-Calibration to get these values
 // FIXME das geht besser
-//const float offset = 85961.00;  // Offset load cell
 const float offset = 85107.00;  // Offset load cell
 const float cell_divider = 22.27; // Load cell divider
-HX711 scale(13, 12);    // 13 DOUT, 12 PD_SCK
+HX711 scale;    
 
 RunningMedian WeightSamples = RunningMedian(4);
 
@@ -134,8 +133,6 @@ void getTemperatures() {
 }
 
 void getWeight() {
-  scale.set_scale(cell_divider);  //initialize scale
-  scale.set_offset(offset);       //initialize scale
   Serial.println("Getting weight, hold on");
   scale.power_up();
   for (int i = 0; i < 4; i++) {
@@ -154,18 +151,15 @@ void getWeight() {
 }
 
 void loopHandler() {
-    //getWeight();
     Serial << "Weight: " << weight << " kg" << endl;
     weightNode.setProperty("kilogram").setRetained(false).send(String(weight));
 
-    //getTemperatures();
     Serial << "Temperature0: " << temperature0 << " °C" << endl;
     temperatureNode0.setProperty("degrees").setRetained(false).send(String(temperature0));
 
     Serial << "Temperature1: " << temperature1 << " °C" << endl;
     temperatureNode1.setProperty("degrees").setRetained(false).send(String(temperature1));
 
-    voltage = ESP.getVcc() / 1000 + 0.3; // ESP07 reads 0.3V too low
     Serial << "Input Voltage: " << voltage << " V" << endl;
     batteryNode.setProperty("volt").setRetained(true).send(String(voltage));
 
@@ -226,7 +220,11 @@ void setup() {
       break;      
   
     case STATE_CONNECT_WIFI:
-      voltage = ESP.getVcc() / 1000;
+      scale.begin(13, 12);
+      scale.set_scale(cell_divider);
+      scale.set_offset(offset);
+
+      voltage = ESP.getVcc()  / 1000 + 0.3; // ESP07 reads 0.3V too low 
       getTemperatures();
       getWeight();
       
