@@ -1,6 +1,6 @@
 /***********************************************************************************************************
    ESP8266 Beescale
-   (c)2014 - 2016 Alexander Wilms
+   (c)2014 - 2017 Alexander Wilms
    https://www.imker-nettetal.de
 
    GNU GPL v3 License
@@ -24,12 +24,12 @@
   Credits: Marvin Roger for the awesome Homie Framework: https://github.com/marvinroger/homie-esp8266
 
   Used libraries:
-  HX711:		https://github.com/bogde/HX711
-  RunningMedian:	https://github.com/RobTillaart/Arduino/tree/master/libraries/RunningMedian
+  HX711:		            https://github.com/bogde/HX711
+  RunningMedian:	      https://github.com/RobTillaart/Arduino/tree/master/libraries/RunningMedian
   Homie-esp8266 v2.0.0:	https://github.com/marvinroger/homie-esp8266
-  Bounce2:		https://github.com/thomasfredericks/Bounce2
-  ESPAsyncTCP:		https://github.com/me-no-dev/ESPAsyncTCP
-  async-mqtt-client:	https://github.com/marvinroger/async-mqtt-client
+  Bounce2:	          	https://github.com/thomasfredericks/Bounce2
+  ESPAsyncTCP:	      	https://github.com/me-no-dev/ESPAsyncTCP
+  async-mqtt-client:    https://github.com/marvinroger/async-mqtt-client
 
 **********************************************************************************************************/
 
@@ -40,13 +40,16 @@
 #include "HX711.h"
 #include <RunningMedian.h>
 
-// Use sketch BeeScale-Calibration to get these values
-const float offset = 244632.00;  // Offset load cell
-const float cell_divider = 22.27; // Load cell divider
 
 HX711 scale;
 
 const int DEFAULT_SEND_INTERVAL = 60;
+
+/* Use sketch BeeScale-Calibration.ino to determine these calibration values.
+   Set them here or use HomieSetting via config.json or WebApp/MQTT
+*/
+const float DEFAULT_WEIGHT_OFFSET = 244017.00; // Load cell zero offset. 
+const float DEFAULT_KILOGRAM_DIVIDER = 22.27;  // Load cell value per kilogram.
 unsigned long lastSent = 0;
 
 RunningMedian WeightSamples = RunningMedian(4);
@@ -59,8 +62,11 @@ HomieNode temperatureNode0("temperature0", "temperature");
 HomieNode temperatureNode1("temperature1", "temperature");
 HomieNode weightNode("weight", "weight");
 HomieNode batteryNode("battery", "battery");
+HomieNode jsonNode("data","__json__");
 
 HomieSetting<long> sendIntervalSetting("sendInterval", "Interval for measurements in seconds (max. 3600)");
+HomieSetting<double> weightOffsetSetting("weightOffset", "Offset value to zero. Use BeeScale-Calibration.ino to determine.");
+HomieSetting<double> kilogramDividerSetting("kilogramDivider", "Scale value per kilogram. Use BeeScale-Calibration.ino to determine.");
 
 void setupHandler() {
   temperatureNode0.setProperty("unit").send("C");
@@ -128,6 +134,16 @@ void loopHandler() {
     volt = ESP.getVcc() / 1000 + 0.3; // ESP07 reads 0.3V too low
     Serial << "Input Voltage: " << volt << " V" << endl;
     batteryNode.setProperty("volt").setRetained(true).send(String(volt));
+
+    StaticJsonBuffer<200> jsonBuffer;
+    JsonObject& root = jsonBuffer.createObject();
+    root["Weight"] = weight;
+    root["Temp1"] = temperature0;
+    root["Temp2"] = temperature1;
+    String values;
+    root.printTo(values);
+    Serial << "Json data:" << values << endl;
+    jsonNode.setProperty("__json__").setRetained(false).send(values);
     
     lastSent = millis();
   }
@@ -137,13 +153,18 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println();
-  Homie_setFirmware("Bienen", "1.0.1");
+  Homie_setFirmware("node-wifi-mqtt-homie", "1.0.5");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
   Homie.disableLedFeedback(); // LED pin would break serial on ESP-07
+
   
+  sendIntervalSetting.setDefaultValue(DEFAULT_SEND_INTERVAL);
+  weightOffsetSetting.setDefaultValue(DEFAULT_WEIGHT_OFFSET);
+  kilogramDividerSetting.setDefaultValue(DEFAULT_KILOGRAM_DIVIDER);
+
   scale.begin(13, 12);
-  scale.set_scale(cell_divider);
-  scale.set_offset(offset);    
+  scale.set_scale(kilogramDividerSetting.get());
+  scale.set_offset(weightOffsetSetting.get());    
 
   temperatureNode0.advertise("unit");
   temperatureNode0.advertise("degrees");
@@ -156,8 +177,6 @@ void setup() {
 
   batteryNode.advertise("unit");
   batteryNode.advertise("volt");
-
-  sendIntervalSetting.setDefaultValue(DEFAULT_SEND_INTERVAL);
   
   Homie.setup();
 }
